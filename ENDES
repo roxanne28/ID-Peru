@@ -1,0 +1,402 @@
+********************************************************************************
+* Extract relevant variables across different datasets
+********************************************************************************
+
+foreach year of numlist 2009/2016 {
+
+	cd "${endes`year'}"
+
+****************************
+* Merge the basics
+****************************
+
+	*	21		CHILD		FUNDAMENTALS	(b)
+
+	use "rec21", clear
+	renvars, lower
+	isvar caseid bidx bord b0 b1 b2 b4 b5 b8 b9 b16 // bidx > 4
+	keep `r(varlist)'
+	valtovar _all
+	gen year = `year' , before(caseid)
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)
+	recode b16 (0=.) // child not in household roster
+	tempfile rec21_kept
+	save `rec21_kept'
+
+	*	0111	WOMAN		FUNDAMENTALS	(v0 v1)
+	
+	use "rec0111", clear
+	renvars, lower
+	isvar caseid v001 v002 v003 awf* v106 v149 ///
+	v130 v131 v155 v157 v158 v159
+	keep `r(varlist)'
+	valtovar _all
+	gen year = `year' , before(v001)
+	if inlist(year,2013,2014,2015,2016) {
+		gen x = ""
+		replace x = ustrleft(ustrright(subinstr(caseid," ","",.),3),2) if strlen(subinstr(caseid," ","",.)) == 10
+		replace x = ustrleft(ustrright(subinstr(caseid," ","",.),4),2) if strlen(subinstr(caseid," ","",.)) == 11
+		gen hhid2 = string(v001) + "." + string(v002) + "." + x , after(caseid)
+		capture drop x
+	}
+	if inlist(year,2012) {
+		gen x = ustrleft(ustrright(subinstr(caseid," ","",.),4),2)
+		gen hhid2 = string(v001) + "." + string(v002) + "." + x , after(caseid)
+		capture drop x
+	}
+	if inlist(year,2009,2010,2011) {
+		gen hhid2 = string(v001) + "." + string(v002) , after(caseid)
+	}
+	duplicates report caseid hhid2
+	assert r(unique_value) == r(N)
+	tempfile rec0111_kept
+	save `rec0111_kept'
+
+	*	0		HOUSEHOLD	FUNDAMENTALS	(hv0)
+	
+	use "rech0", clear
+	renvars, lower
+	isvar hhid hv001 hv002 hv004 hv005 hv005x hv006 hv007 hv020 ///
+	hv009 hv023 hv024 hv025
+	keep `r(varlist)'
+	valtovar _all
+	gen year = `year' , before(hv001)
+	if inlist(year,2012,2013,2014,2015,2016) {
+		gen x = ustrright(subinstr(hhid," ","",.),2)
+		gen hhid2 = string(hv001) + "." + string(hv002) + "." + x
+		capture drop x
+	}
+	if inlist(year,2009,2010,2011) {
+		gen hhid2 = string(hv001) + "." + string(hv002)
+	}
+	duplicates report hhid2
+	assert r(unique_value) == r(N)
+	tempfile rech0
+	save `rech0'
+
+	*	MERGE
+
+	use `rec21_kept', clear
+	merge m:1 caseid using `rec0111_kept'
+	assert _merge != 1
+	drop if _merge == 2
+	drop _merge
+	
+	merge m:1 hhid2 using `rech0'
+	assert _merge != 1
+	drop if _merge == 2
+	drop _merge
+
+	order b* v* aw* hv* , last
+	order year hhid hhid2 caseid bord bidx, first
+	drop *v001 *v002 *v003
+	
+	la var hhid "household ID (original)"
+	la var hhid2 "household ID (for matching)"
+	la var caseid "mom ID"
+	
+	tempfile fundamentals
+	save `fundamentals'
+
+
+****************************
+* Clean other child-level data
+****************************
+
+
+	*	41		CHILD		(m)
+
+	use "rec41", clear
+	renvars, lower
+	rename midx bidx // 1-4
+	isvar caseid bidx m1 m1a m1b m1c m1d m1e m13 m14 m15 m19 m19a ///
+	m45 m46 m47 m48 m54 m60 m65a m65d m70 m71 ///
+	/*new from SB*/ m2a m2b m2c m2d m2e m2f m2g m2h m2i m2j m2k m2l m2m m2n m72 m73 m50* m51* m52*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)	
+	tempfile rec41_kept
+	save `rec41_kept'
+	note: rec41 (m) is child specific, but has no data for bidx 2-4
+
+	*	43		CHILD		(h)
+
+	use "rec43", clear
+	renvars, lower
+	rename hidx bidx // 1-4
+	isvar caseid bidx ///
+	h2 h2d h2m h2y ///
+	h3 h3d h3m h3y ///
+	h4 h4d h4m h4y ///
+	h5 h5d h5m h5y ///
+	h6 h6d h6m h6y ///
+	h7 h7d h7m h7y ///
+	h8 h8d h8m h8y ///
+	h9 h9d h9m h9y ///
+	h0 h0d h0m h0y ///
+	h33 h33d h33m h33y ///
+	h40 h40a h40m h40y ///
+	h10 h34 h35 h36* h41* h42* h43* ///
+	/*new from SB*/ h11 h12* h13* h14* h21* h22* h31* h32*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)
+	tempfile rec43_kept
+	save `rec43_kept'
+	note: rec43 (h) is child specific
+
+	*	44		CHILD		(hw)
+
+	use "rec44", clear
+	renvars, lower
+	rename hwidx bidx // 1-4
+	isvar caseid bidx hw1 hw2 hw3 hw4 hw5 hw6 hw7 hw8 hw9 hw10 hw11 hw12 hw15 hw57 hw7*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)
+	tempfile rec44_kept
+	save `rec44_kept'
+	note: rec44 (hw) is child specific
+	
+	*	94		CHILD		(s41 s42 s43)
+
+	use "rec94", clear
+	renvars, lower
+	rename idx94 bidx // 1-4
+	isvar caseid bidx s410b s413 s422i s424f s424fn s425a s425b s425c* s430c s430d* s432*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)
+	tempfile rec94_kept
+	save `rec94_kept'
+	note: rec94 (s41 s42 s43) is child specific, but lacks data for bidx 2-4 for SIS questions
+	
+	*	95		CHILD		(s45 s46 q47)
+
+	use "rec95", clear
+	renvars, lower
+	rename idx95 bidx // 1-4
+	isvar caseid bidx s45* s462e s466* s465e* s465db* q478a* 
+	keep `r(varlist)'
+	isvar s459b *c1 *c2 *c3 *c4 *c5 *c6 *c7 *c8 *c9 *c10 *c11 *c12 *c13 s466a* s466g*
+	drop `r(varlist)'
+	valtovar _all
+	duplicates report caseid bidx
+	assert r(unique_value) == r(N)
+	tempfile rec95_kept
+	save `rec95_kept'
+	note: rec95 (s45 s462 s466) is child specific
+	
+	*	MERGE
+	
+	use `rec41_kept', clear
+	merge 1:1 caseid bidx using `rec43_kept'
+	assert _merge == 3
+	drop _merge
+
+	merge 1:1 caseid bidx using `rec44_kept'
+	assert _merge == 3
+	drop _merge
+	
+	merge 1:1 caseid bidx using `rec94_kept'
+	assert _merge == 3
+	drop _merge
+	
+	merge 1:1 caseid bidx using `rec95_kept'
+	assert _merge == 3
+	drop _merge
+	
+	tempfile kids14 // caseid bidx
+	save `kids14'
+
+
+****************************
+* Clean other woman-level data
+****************************
+
+
+	*	91		WOMAN		(s1 s2 s48 s49 q11)
+
+	use "rec91", clear
+	renvars, lower
+	isvar caseid s119 q119na q119nb s229* s239* s484* s490 s490a s490m s490d s490y
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid
+	assert r(unique_value) == r(N)	
+	tempfile rec91_kept
+	save `rec91_kept'
+	note: rec91 (s1 q119 s22* s23* s484*) is woman specific
+	
+	*	42		WOMAN		(v48* v44* v45* v46*)
+
+	use "rec42", clear
+	renvars, lower
+	isvar caseid v481* ///
+	/*new from SB*/ v444* v445* v463*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report caseid
+	assert r(unique_value) == r(N)		
+	tempfile rec42_kept
+	save `rec42_kept'
+	note: rec42 (v48*) is woman specific
+
+
+****************************
+* Clean other household-level data
+****************************
+
+
+	*	23		HOUSEHOLD	(hv2 qh9 sh5 sh6 shr shp shd)
+
+	use "rech23", clear
+	renvars, lower
+	isvar hhid ///
+	hv201 hv202 hv205 hv206 hv208 hv209 hv213 hv214 hv215 hv216 hv218 ///
+	hv221 hv226 hv247 hv270 hv271 qh90 qh93 sh51o sh51p sh51q /// 
+	sh61j sh61n sh61o sh61p sh61q sh63 sh64 sh72 sh51j ///
+	shregion shprovin shdistri 
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report hhid
+	assert r(unique_value) == r(N)	
+	tempfile rech23_kept
+	save `rech23_kept'
+	note: rech23 (hv qh sh) is household specific
+	
+	
+****************************
+* Clean other household member-level data
+****************************	
+
+
+	*	1		HOUSEHOLD MEMBER	(hv1 qh1)
+	
+	use "rech1", clear
+	renvars, lower
+	isvar hhid hvidx hv101 hv102 hv103 hv106 hv140 qh13*
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report hhid hvidx
+	assert r(unique_value) == r(N)
+	tempfile rech1_kept
+	save `rech1_kept'
+	note: rech1 (hv1* qh1) is household member specific
+	
+	*	4		HH		(sh1)
+
+	use "rech4", clear
+	renvars, lower
+	rename idxh4 hvidx
+	isvar hhid hvidx sh11* sh15n
+	keep `r(varlist)'
+	valtovar _all
+	duplicates report hhid hvidx
+	assert r(unique_value) == r(N)
+	tempfile rech4_kept
+	save `rech4_kept'
+	note: rech4 (sh1) is household member specific
+	
+	*	MERGE
+	
+	use `rech1_kept', clear
+	merge 1:1 hhid hvidx using `rech4_kept'
+	assert _merge == 3
+	drop _merge
+
+	// hv101 == 1 if household head
+	// hv102 == 1 if usual resident
+	
+	gen hm = 1
+	bysort hhid : egen nhm = total(hm)
+	la var nhm "number of household members"
+		
+	replace hm = . if hv102 != 1
+	bysort hhid : egen nhm_ur = total(hm)
+	la var nhm_ur "number of household members (usual residents)"
+
+	gen eh = sh15n if hv101 == 1
+	bysort hhid : egen eduhead_num = max(eh)
+	la var eduhead_num "household head's highest education level"
+	
+	replace eh = . if hv101 == 1 & hv102 != 1
+	bysort hhid : egen eduhead_ur_num = max(eh)
+	la var eduhead_ur_num "household head's highest education level (usual residents)"
+	
+	gen em = sh15n
+	bysort hhid : egen eduhouse_num = max(em)
+	la var eduhouse_num "highest education level in household"
+	
+	replace em = . if hv102 != 1
+	bysort hhid : egen eduhouse_ur_num = max(em)
+	la var eduhouse_ur_num "highest education level in household (usual residents)"
+	
+	egen ai = rowmax(sh11a sh11b sh11d sh11e) // sh11c is SIS
+	bysort hhid : egen ihouse_num = total(ai)
+	la var ihouse_num "# of household members w/insurance (not SIS)"
+	
+	replace ai = . if hv102 != 1
+	bysort hhid : egen ihouse_ur_num = total(ai)
+	la var ihouse_ur_num "# of household members w/insurance (not SIS; usual residents)"
+	
+	* apply label values
+	
+	foreach varprefix in eduhead eduhead_ur eduhouse eduhouse_ur {
+		label values `varprefix'_num sh15n
+		decode `varprefix'_num , gen(`varprefix')
+		drop `varprefix'_num
+	}
+
+	drop hm eh em ai hv101 hv106
+	
+	rename hvidx b16
+	
+	tempfile hhmembers
+	save `hhmembers'
+
+
+****************************
+* Merge new data to fundamentals
+****************************
+
+
+	use `fundamentals', clear // kids 1-n
+	
+	merge 1:1 caseid bidx using `kids14' // kids 1-4
+	assert _merge == 3 if inrange(bidx,1,4) & b8 < 5
+	keep if _merge == 3
+	drop _merge
+
+	merge m:1 caseid using `rec91_kept' // women
+	keep if _merge == 3
+	drop _merge
+
+	merge m:1 caseid using `rec42_kept' // women
+	keep if _merge == 3
+	drop _merge
+
+	merge m:1 hhid using `rech23_kept' // households
+	keep if _merge == 3
+	drop _merge
+
+	merge m:1 hhid b16 using `hhmembers' // household members
+	keep if _merge == 3
+
+	drop _merge
+	
+	ds, has(vallabel)
+	foreach var of varlist `r(varlist)' {
+		decode `var', gen(`var'_dec)
+		order `var'_dec , after(`var')
+		replace `var'_dec = lower(`var'_dec)
+	}
+	
+	save "${clean}/ENDES `year'", replace
+
+}
